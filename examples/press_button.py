@@ -4,8 +4,8 @@ import trossen_arm
 
 def keep_gripper_closed(driver, block=False):
     """Ensure gripper stays closed"""
-    driver.set_gripper_mode(trossen_arm.Mode.external_effort)
-    driver.set_gripper_external_effort(-20.0, 2.0, block)
+    driver.set_gripper_mode(trossen_arm.Mode.position)
+    driver.set_gripper_position(0.0, 2.0, False)
 
 def move_to_home(driver):
     """Move robot to home position"""

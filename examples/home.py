@@ -24,5 +24,5 @@ if __name__=='__main__':
 
 
     print("Closing the gripper...")
-    driver.set_gripper_mode(trossen_arm.Mode.external_effort)
-    driver.set_gripper_external_effort(-20.0, 5.0, True)
+    driver.set_gripper_mode(trossen_arm.Mode.position)
+    driver.set_gripper_position(0.0, 2.0, False)
