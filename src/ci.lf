@@ -4,11 +4,15 @@ preamble {=
     import json
     import numpy as np
     import trossen_arm
+    import random
+    from evdev import InputDevice, categorize, ecodes
 =}
 
 reactor Robot {
 
     input press_button # str
+
+    output pressed_key # str
 
     state key_positions 
     state driver
@@ -27,7 +31,7 @@ reactor Robot {
     method close_gripper() {=
         print("Closing gripper")
         self.driver.set_gripper_mode(trossen_arm.Mode.position)
-        self.driver.set_gripper_position(0.0, 2.0, False)
+        self.driver.set_gripper_position(0.0, 1.0, True)
         print("Gripper is closed")
     =}
 
@@ -50,7 +54,7 @@ reactor Robot {
         self.close_gripper()
     =}
 
-    reaction (press_button) {=
+    reaction (press_button) -> pressed_key {=
         print(f"Pressing button: {press_button.value}")
         if press_button.value not in self.key_positions:
             exit(1)
@@ -82,6 +86,8 @@ reactor Robot {
             2.0,
             True
         )
+        pressed_key.set(press_button.value)
+        print(f"Robot: Pressed key: {press_button.value}")
     =}
 
     
@@ -90,18 +96,68 @@ reactor Robot {
         self.move_to_home()
         self.close_gripper()
         print("Shutdown: Robot is at home position")
+        return
     =}
 }
 
 reactor InputGenerator {
+    input pressed_key # str
     output press_button # str
-    reaction(startup) -> press_button {=
-        press_button.set("1")
+    state current_rand_key # int
+    state iter_count # int
+
+    method generate_rand_key() {=
+        rand_key = random.randint(1, 9)
+        return rand_key
     =}
+
+    reaction(startup) -> press_button {=
+        self.iter_count = 0
+        self.current_rand_key = self.generate_rand_key()
+        press_button.set(str(self.current_rand_key))
+    =}
+
+    reaction(pressed_key) -> press_button {=
+        key_num = pressed_key.value.split("KEY_KP")[1]
+        print(f"InputGenerator: Pressed keypad: {pressed_key.value} | Key number: {key_num}")
+        assert int(key_num) == self.current_rand_key, "Key number does not match current random key"
+        self.iter_count += 1
+        if self.iter_count >= 3:
+            request_stop()
+            print("InputGenerator: Requesting stop")
+        self.current_rand_key = self.generate_rand_key()
+        print(f"InputGenerator: Pressing key: {self.current_rand_key}")
+        press_button.set(str(self.current_rand_key))
+    =}
+}
+
+reactor NumpadReceiver {
+    input read_numpad # str
+    output pressed_key # str
+    state numpad_device # InputDevice
+    reaction(startup) {=
+        print("NumpadReceiver: Starting")
+        self.numpad_device = InputDevice("/dev/input/by-id/usb-Usb_KeyBoard_Usb_KeyBoard-event-kbd")
+        print(f"NumpadReceiver: Connected to: {self.numpad_device.name}")
+    =}
+
+    reaction(read_numpad) -> pressed_key {=
+        for event in self.numpad_device.read_loop():
+            if event.type == ecodes.EV_KEY:
+                key_event = categorize(event)
+                if key_event.keystate == 1:  # Key Down
+                    print(f"Key: {key_event.keycode} | ID: {key_event.scancode}")
+                    pressed_key.set(key_event.keycode)
+                    return
+    =}
+
 }
 
 main reactor {
     robot = new Robot()
     input_generator = new InputGenerator()
+    numpad_receiver = new NumpadReceiver()
+    numpad_receiver.pressed_key -> input_generator.pressed_key after 0
     input_generator.press_button -> robot.press_button
+    robot.pressed_key -> numpad_receiver.read_numpad
 }
