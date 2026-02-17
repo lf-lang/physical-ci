@@ -1,14 +1,13 @@
 
 target Python
 
+preamble {=
+    import json
+    import numpy as np
+    import trossen_arm
+=}
+
 reactor Robot {
-
-    preamble {=
-        import json
-        import numpy as np
-        import trossen_arm
-    =}
-
     input press_button # str
 
     output pressed_key # str
