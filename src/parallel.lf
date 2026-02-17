@@ -1,0 +1,88 @@
+target Python
+
+import Robot from "robot.lf"
+
+preamble {=
+    import json
+    import numpy as np
+    import random
+    from evdev import InputDevice, categorize, ecodes
+=}
+
+
+reactor IntegrationTest {
+    input numpad_pressed_key # str
+    input robot_pressed_key # str
+    output press_button # str
+    state current_rand_key # int
+    state iter_count # int
+
+    method generate_rand_key() {=
+        rand_key = random.randint(1, 9)
+        return rand_key
+    =}
+
+    reaction(startup) -> press_button {=
+        self.iter_count = 0
+        self.current_rand_key = self.generate_rand_key()
+        press_button.set(str(self.current_rand_key))
+    =}
+
+    reaction(numpad_pressed_key, robot_pressed_key) -> press_button {=
+        assert numpad_pressed_key.value == robot_pressed_key.value, f"Numpad and robot pressed keys do not match: {numpad_pressed_key.value} != {robot_pressed_key.value}"
+        assert int(numpad_pressed_key.value) == self.current_rand_key, "Key number does not match current random key"
+        
+        print(f"IntegrationTest: Pressing key: {self.current_rand_key}")
+
+        self.iter_count += 1
+        if self.iter_count >= 3:
+            request_stop()
+            print("IntegrationTest: Requesting stop")
+
+        self.current_rand_key = self.generate_rand_key()
+        press_button.set(str(self.current_rand_key))
+    =}
+}
+
+reactor NumpadReceiver {
+    input read_numpad # str
+    output pressed_key # str
+    state numpad_device # InputDevice
+
+    method clear_numpad_buffer() {=
+        try:
+            while self.numpad_device.read_one() is not None:
+                pass
+        except OSError:
+            pass
+    =}
+    reaction(startup) {=
+        print("NumpadReceiver: Starting")
+        self.numpad_device = InputDevice("/dev/input/by-id/usb-Usb_KeyBoard_Usb_KeyBoard-event-kbd")
+        self.numpad_device.grab()
+        self.clear_numpad_buffer()
+        print(f"NumpadReceiver: Connected to: {self.numpad_device.name}")
+    =}
+
+    reaction(read_numpad) -> pressed_key {=
+        for event in self.numpad_device.read_loop():
+            if event.type == ecodes.EV_KEY:
+                key_event = categorize(event)
+                if key_event.keystate == 1:  # Key Down
+                    print(f"Key: {key_event.keycode} | ID: {key_event.scancode}")
+                    pressed_key.set(key_event.keycode.split("KEY_KP")[1])
+                    break
+        self.clear_numpad_buffer()
+    =}
+
+}
+
+main reactor {
+    robot = new Robot()
+    ci_test = new IntegrationTest()
+    numpad_receiver = new NumpadReceiver()
+    ci_test.press_button -> robot.press_button
+    ci_test.press_button -> numpad_receiver.read_numpad
+    numpad_receiver.pressed_key -> ci_test.numpad_pressed_key after 0
+    robot.pressed_key -> ci_test.robot_pressed_key after 0
+}
