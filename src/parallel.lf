@@ -6,7 +6,7 @@ preamble {=
     import json
     import numpy as np
     import random
-    from evdev import InputDevice, categorize, ecodes
+    import urllib.request
 =}
 
 
@@ -47,32 +47,20 @@ reactor IntegrationTest {
 reactor NumpadReceiver {
     input read_numpad # str
     output pressed_key # str
-    state numpad_device # InputDevice
+    state numpad_url # str
 
-    method clear_numpad_buffer() {=
-        try:
-            while self.numpad_device.read_one() is not None:
-                pass
-        except OSError:
-            pass
-    =}
     reaction(startup) {=
-        print("NumpadReceiver: Starting")
-        self.numpad_device = InputDevice("/dev/input/by-id/usb-Usb_KeyBoard_Usb_KeyBoard-event-kbd")
-        self.numpad_device.grab()
-        self.clear_numpad_buffer()
-        print(f"NumpadReceiver: Connected to: {self.numpad_device.name}")
+        self.numpad_url = "http://localhost:5100"
+        print(f"NumpadReceiver: Connecting to numpad server at {self.numpad_url}")
+        urllib.request.urlopen(f"{self.numpad_url}/clear").read()
+        print("NumpadReceiver: Ready")
     =}
 
     reaction(read_numpad) -> pressed_key {=
-        for event in self.numpad_device.read_loop():
-            if event.type == ecodes.EV_KEY:
-                key_event = categorize(event)
-                if key_event.keystate == 1:  # Key Down
-                    print(f"Key: {key_event.keycode} | ID: {key_event.scancode}")
-                    pressed_key.set(key_event.keycode.split("KEY_KP")[1])
-                    break
-        self.clear_numpad_buffer()
+        response = urllib.request.urlopen(f"{self.numpad_url}/key")
+        key = response.read().decode()
+        print(f"NumpadReceiver: Key pressed: {key}")
+        pressed_key.set(key)
     =}
 
 }

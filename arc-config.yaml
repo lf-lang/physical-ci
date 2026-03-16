@@ -3,6 +3,7 @@ githubConfigSecret:
   github_token: "${GITHUB_PAT}" # it will not read from environment variables, please override it in the command line
 template:
   spec:
+    hostNetwork: true
     containers:
       - name: runner
         image: depetrol/lingua-franca:latest
