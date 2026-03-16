@@ -1,0 +1,10 @@
+githubConfigUrl: "https://github.com/depetrol/physical-ci"
+githubConfigSecret:
+  github_token: "${GITHUB_PAT}"
+template:
+  spec:
+    containers:
+      - name: runner
+        image: depetrol/lingua-franca:latest
+        command: ["/home/runner/run.sh"]
+

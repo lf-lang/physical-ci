@@ -22,6 +22,9 @@ class RobotPower:
 
 class SerialControl:
     def __init__(self, port='/dev/ttyACM0', baudrate=115200, timeout=2):
+        import os
+        if not os.path.exists(port):
+            raise FileNotFoundError(f"Serial port {port} not found. Is the Pico plugged in?")
         self.ser = serial.Serial(port, baudrate, timeout=timeout)
     def GPIO_ON(self):
         self.ser.write(b'1')

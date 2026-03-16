@@ -60,20 +60,33 @@ lfc-dev src/parallel.lf && ./bin/parallel
 
 **`test.yml`** — Manual-dispatch workflow for [Actions Runner Controller](https://github.com/actions/actions-runner-controller) (Kubernetes-based runners).
 
+### Docker image
+
+```bash
+docker build -t depetrol/lingua-franca .
+docker push depetrol/lingua-franca
+```
+
 ### ARC setup
 
 ```bash
 helm install arc \
-    --namespace "arc-systems" \
+    --namespace "arc-controller" \
     --create-namespace \
     oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set-controller
 
-helm install "arc-runner-set" \
+helm install "lf-thor-widowx" \
     --namespace "arc-runners" \
     --create-namespace \
-    --set githubConfigUrl="https://github.com/depetrol/physical-ci" \
-    --set githubConfigSecret.github_token="${GITHUB_PAT}" \
+    -f arc-config.yaml \
     oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set
+```
+
+### ARC shutdown
+
+```bash
+helm uninstall widowx --namespace arc-runners
+helm uninstall arc --namespace arc-controller
 ```
 
 ### ARC status
@@ -83,6 +96,10 @@ kubectl get pods -n arc-systems        # controller status
 kubectl get pods -n arc-runners        # runner pods
 kubectl logs -n arc-systems -l app.kubernetes.io/name=gha-runner-scale-set-controller  # controller logs
 kubectl logs -n arc-runners -l actions.github.com/scale-set-name=arc-runner-set        # runner logs
+
+# live logs of a currently running runner pod
+kubectl get pods -n arc-runners                          # find the pod name
+kubectl logs -f -n arc-runners <pod-name>                # follow logs
 ```
 
 ## Project structure

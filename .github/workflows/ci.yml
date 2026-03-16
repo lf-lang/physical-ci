@@ -8,7 +8,7 @@ on:
 
 jobs:
   Physical-CI:
-    runs-on: arc-runner-set
+    runs-on: lf-thor-widowx
     steps:
       - name: Check out repository code
         uses: actions/checkout@v4
@@ -16,5 +16,5 @@ jobs:
       - name: Build and Run Parallel
         shell: bash -l {0}
         run: |
-          lfc-dev src/parallel.lf
+          lfc src/parallel.lf
           ./bin/parallel
