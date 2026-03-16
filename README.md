@@ -75,11 +75,20 @@ helm install arc \
     --create-namespace \
     oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set-controller
 
+
 helm install "lf-thor-widowx" \
-    --namespace "arc-runners" \
-    --create-namespace \
-    -f arc-config.yaml \
-    oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set
+      --namespace "arc-runners" \
+      --create-namespace \
+      --set githubConfigSecret.github_token="$GITHUB_PAT" \
+      -f arc-config.yaml \
+      oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set
+
+helm upgrade "lf-thor-widowx" \
+      --namespace "arc-runners" \
+      --create-namespace \
+      --set githubConfigSecret.github_token="$GITHUB_PAT" \
+      -f arc-config.yaml \
+      oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set
 ```
 
 ### ARC shutdown
@@ -95,7 +104,7 @@ helm uninstall arc --namespace arc-controller
 kubectl get pods -n arc-systems        # controller status
 kubectl get pods -n arc-runners        # runner pods
 kubectl logs -n arc-systems -l app.kubernetes.io/name=gha-runner-scale-set-controller  # controller logs
-kubectl logs -n arc-runners -l actions.github.com/scale-set-name=arc-runner-set        # runner logs
+kubectl logs -n arc-runners -l actions.github.com/scale-set-name=lf-thor-widowx        # runner logs
 
 # live logs of a currently running runner pod
 kubectl get pods -n arc-runners                          # find the pod name
