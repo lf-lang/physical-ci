@@ -1,5 +1,5 @@
 import serial
-import time
+
 
 class RobotPower:
     def __init__(self, mode = "normally_off"):
@@ -31,8 +31,15 @@ class SerialControl:
         self.ser.close()
 
 if __name__ == "__main__":
-    robot_power = RobotPower()
-    robot_power.power_on()
-    time.sleep(5)
-    robot_power.power_off()
+    import argparse
+    parser = argparse.ArgumentParser(description="Robot power control via Pico relay")
+    parser.add_argument("action", choices=["on", "off"], help="Power on or off")
+    parser.add_argument("--mode", choices=["normally_on", "normally_off"], default="normally_off", help="Relay mode (default: normally_off)")
+    args = parser.parse_args()
+
+    robot_power = RobotPower(mode=args.mode)
+    if args.action == "on":
+        robot_power.power_on()
+    else:
+        robot_power.power_off()
     robot_power.close()
