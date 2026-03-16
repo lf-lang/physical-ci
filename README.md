@@ -76,6 +76,15 @@ helm install "arc-runner-set" \
     oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set
 ```
 
+### ARC status
+
+```bash
+kubectl get pods -n arc-systems        # controller status
+kubectl get pods -n arc-runners        # runner pods
+kubectl logs -n arc-systems -l app.kubernetes.io/name=gha-runner-scale-set-controller  # controller logs
+kubectl logs -n arc-runners -l actions.github.com/scale-set-name=arc-runner-set        # runner logs
+```
+
 ## Project structure
 
 ```

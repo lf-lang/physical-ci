@@ -1,15 +1,14 @@
 name: Physical CI with WidowX
 
 on:
-  pull_request:
-    branches:
-      - main
+  # pull_request:
+  #   branches:
+  #     - main
   workflow_dispatch:
 
 jobs:
-  build-and-run:
-    runs-on: self-hosted
-
+  Physical CI:
+    runs-on: arc-runner-set
     steps:
       - name: Check out repository code
         uses: actions/checkout@v4
