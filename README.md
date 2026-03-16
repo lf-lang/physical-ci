@@ -94,7 +94,7 @@ helm upgrade "lf-thor-widowx" \
 ### ARC shutdown
 
 ```bash
-helm uninstall widowx --namespace arc-runners
+helm uninstall lf-thor-widowx --namespace arc-runners
 helm uninstall arc --namespace arc-controller
 ```
 

@@ -8,3 +8,6 @@ template:
       - name: runner
         image: depetrol/lingua-franca:latest
         command: ["/home/runner/run.sh"]
+        env:
+          - name: NUMPAD_SERVER_HOST
+            value: "192.168.49.1"
