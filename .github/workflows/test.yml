@@ -3,8 +3,14 @@ on:
   workflow_dispatch:
 
 jobs:
-  Explore-GitHub-Actions:
-    # You need to use the INSTALLATION_NAME from the previous step
+  Physical CI:
     runs-on: arc-runner-set
     steps:
-    - run: echo "🎉 This job uses runner scale set runners!"
+      - name: Check out repository code
+        uses: actions/checkout@v4
+
+      - name: Build and Run Parallel
+        shell: bash -l {0}
+        run: |
+          lfc-dev src/parallel.lf
+          ./bin/parallel
