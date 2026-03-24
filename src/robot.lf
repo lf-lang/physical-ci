@@ -43,6 +43,7 @@ reactor Robot {
             exit(1)
 
         self.driver = trossen_arm.TrossenArmDriver()
+        print(f"Configuring driver to {os.environ.get('ROBOT_HOST', '192.168.1.2')}")
         self.driver.configure(
             trossen_arm.Model.wxai_v0,
             trossen_arm.StandardEndEffector.wxai_v0_follower,
