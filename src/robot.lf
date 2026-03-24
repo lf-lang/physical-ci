@@ -3,6 +3,7 @@ target Python
 
 preamble {=
     import json
+    import os
     import numpy as np
     import trossen_arm
 =}
@@ -45,7 +46,7 @@ reactor Robot {
         self.driver.configure(
             trossen_arm.Model.wxai_v0,
             trossen_arm.StandardEndEffector.wxai_v0_follower,
-            "192.168.1.2",
+            os.environ.get("ROBOT_HOST", "192.168.1.2"),
             False
         )
         self.move_to_home()

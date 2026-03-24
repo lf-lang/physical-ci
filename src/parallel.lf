@@ -51,7 +51,7 @@ reactor NumpadReceiver {
     state numpad_url # str
 
     reaction(startup) {=
-        self.numpad_url = f"http://{os.environ['NUMPAD_SERVER_HOST']}:5100"
+        self.numpad_url = f"http://{os.environ.get('NUMPAD_SERVER_HOST', 'localhost')}:5100"
         print(f"NumpadReceiver: Connecting to numpad server at {self.numpad_url}")
         urllib.request.urlopen(f"{self.numpad_url}/clear").read()
         print("NumpadReceiver: Ready")
