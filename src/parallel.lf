@@ -39,9 +39,9 @@ reactor IntegrationTest {
         if self.iter_count >= 3:
             request_stop()
             print("IntegrationTest: Requesting stop")
-
-        self.current_rand_key = self.generate_rand_key()
-        press_button.set(str(self.current_rand_key))
+        else:
+            self.current_rand_key = self.generate_rand_key()
+            press_button.set(str(self.current_rand_key))
     =}
 }
 

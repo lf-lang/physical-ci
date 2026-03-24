@@ -67,28 +67,33 @@ docker build -t depetrol/lingua-franca .
 docker push depetrol/lingua-franca
 ```
 
-### ARC setup
+### ARC setup (k3s)
+
+ARC runners must use **k3s** (not minikube). Minikube's Docker driver wraps the cluster in a container, so `hostNetwork: true` only exposes the minikube container's network — not the host LAN where the robot lives. k3s runs natively on the host, so `hostNetwork: true` gives pods direct access to the physical network.
+
+The runner pod uses `hostNetwork: true` and `dnsPolicy: ClusterFirstWithHostNet` (configured in `arc-config.yaml`) to reach the robot at `192.168.1.2`. The robot IP is configurable via the `ROBOT_HOST` environment variable.
 
 ```bash
+# Install ARC controller
 helm install arc \
     --namespace "arc-controller" \
     --create-namespace \
     oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set-controller
 
-
+# Deploy runner scale set
 helm install "lf-thor-widowx" \
-      --namespace "arc-runners" \
-      --create-namespace \
-      --set githubConfigSecret.github_token="$GITHUB_PAT" \
-      -f arc-config.yaml \
-      oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set
+    --namespace "arc-runners" \
+    --create-namespace \
+    --set githubConfigSecret.github_token="$GITHUB_PAT" \
+    -f arc-config.yaml \
+    oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set
 
+# Upgrade after config changes
 helm upgrade "lf-thor-widowx" \
-      --namespace "arc-runners" \
-      --create-namespace \
-      --set githubConfigSecret.github_token="$GITHUB_PAT" \
-      -f arc-config.yaml \
-      oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set
+    --namespace "arc-runners" \
+    --set githubConfigSecret.github_token="$GITHUB_PAT" \
+    -f arc-config.yaml \
+    oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set
 ```
 
 ### ARC shutdown
@@ -101,10 +106,10 @@ helm uninstall arc --namespace arc-controller
 ### ARC status
 
 ```bash
-kubectl get pods -n arc-systems        # controller status
+kubectl get pods -n arc-controller     # controller + listener status
 kubectl get pods -n arc-runners        # runner pods
-kubectl logs -n arc-systems -l app.kubernetes.io/name=gha-runner-scale-set-controller  # controller logs
-kubectl logs -n arc-runners -l actions.github.com/scale-set-name=lf-thor-widowx        # runner logs
+kubectl logs -n arc-controller -l app.kubernetes.io/name=gha-runner-scale-set-controller  # controller logs
+kubectl logs -n arc-runners -l actions.github.com/scale-set-name=lf-thor-widowx           # runner logs
 
 # live logs of a currently running runner pod
 kubectl get pods -n arc-runners                          # find the pod name

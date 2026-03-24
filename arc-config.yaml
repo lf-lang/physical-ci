@@ -11,6 +11,6 @@ template:
         command: ["/home/runner/run.sh"]
         env:
           - name: NUMPAD_SERVER_HOST
-            value: "192.168.49.1"
+            value: "127.0.0.1"
           - name: ROBOT_HOST
-            value: "192.168.49.1"
+            value: "192.168.1.2"
