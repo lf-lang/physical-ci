@@ -85,6 +85,7 @@ helm install "lf-thor-widowx" \
     --namespace "arc-runners" \
     --create-namespace \
     --set githubConfigSecret.github_token="$GITHUB_PAT" \
+    --set maxRunners=1 \
     -f arc-config.yaml \
     oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set
 
@@ -92,6 +93,7 @@ helm install "lf-thor-widowx" \
 helm upgrade "lf-thor-widowx" \
     --namespace "arc-runners" \
     --set githubConfigSecret.github_token="$GITHUB_PAT" \
+    --set maxRunners=1 \
     -f arc-config.yaml \
     oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set
 ```
@@ -115,6 +117,22 @@ kubectl logs -n arc-runners -l actions.github.com/scale-set-name=lf-thor-widowx 
 kubectl get pods -n arc-runners                          # find the pod name
 kubectl logs -f -n arc-runners <pod-name>                # follow logs
 ```
+
+### Scheduling CI
+
+To run CI automatically overnight (1 AM–5 AM PST), add crontab entries:
+
+```bash
+crontab -e
+
+# Start CI at 2 AM PST
+0 2 * * * cd /path/to/physical-ci && scripts/start_ci.sh >> ci.log 2>&1
+
+# Stop CI at 4 AM PST
+0 4 * * * cd /path/to/physical-ci && scripts/stop_ci.sh >> ci.log 2>&1
+```
+
+`GITHUB_PAT` must be set in your environment (e.g. in `~/.bashrc`). The system timezone must be set to `America/Los_Angeles` (`timedatectl set-timezone America/Los_Angeles`).
 
 ## Project structure
 

@@ -38,7 +38,12 @@ def numpad_reader():
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/key":
-            # Block until a key is pressed
+            # Clear any buffered presses, then block until a new one
+            while not key_queue.empty():
+                try:
+                    key_queue.get_nowait()
+                except queue.Empty:
+                    break
             key = key_queue.get()
             self.send_response(200)
             self.send_header("Content-Type", "text/plain")
