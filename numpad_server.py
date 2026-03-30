@@ -1,19 +1,21 @@
 #!/usr/bin/env python3
-"""HTTP server that reads numpad key presses and serves them via GET /key.
+"""WebSocket server that reads numpad key presses and pushes them to all
+connected subscribers.
 
-GET /key blocks until a key is pressed, then returns the key value as plain text.
-GET /clear clears any buffered key presses.
+Connect to ws://<host>:5100 to receive key presses as plain text messages.
 """
 
+import asyncio
 import threading
-import queue
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from websockets.asyncio.server import serve
+
 from evdev import InputDevice, categorize, ecodes
 
 DEVICE_PATH = "/dev/input/by-id/usb-Usb_KeyBoard_Usb_KeyBoard-event-kbd"
 PORT = 5100
 
-key_queue = queue.Queue()
+subscribers: set = set()
+loop: asyncio.AbstractEventLoop = None
 
 
 def numpad_reader():
@@ -32,44 +34,39 @@ def numpad_reader():
             if key_event.keystate == 1:  # Key Down
                 key_name = key_event.keycode.split("KEY_KP")[1]
                 print(f"Key pressed: {key_name}")
-                key_queue.put(key_name)
+                loop.call_soon_threadsafe(asyncio.ensure_future, broadcast(key_name))
 
 
-class Handler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        if self.path == "/key":
-            # Clear any buffered presses, then block until a new one
-            while not key_queue.empty():
-                try:
-                    key_queue.get_nowait()
-                except queue.Empty:
-                    break
-            key = key_queue.get()
-            self.send_response(200)
-            self.send_header("Content-Type", "text/plain")
-            self.end_headers()
-            self.wfile.write(key.encode())
-        elif self.path == "/clear":
-            while not key_queue.empty():
-                try:
-                    key_queue.get_nowait()
-                except queue.Empty:
-                    break
-            self.send_response(200)
-            self.send_header("Content-Type", "text/plain")
-            self.end_headers()
-            self.wfile.write(b"cleared")
-        else:
-            self.send_response(404)
-            self.end_headers()
+async def broadcast(key: str):
+    if subscribers:
+        await asyncio.gather(
+            *(ws.send(key) for ws in subscribers),
+            return_exceptions=True,
+        )
 
-    def log_message(self, format, *args):
-        print(f"[HTTP] {args[0]}")
+
+async def handler(websocket):
+    subscribers.add(websocket)
+    print(f"[WS] +subscriber ({len(subscribers)} total)")
+    try:
+        async for _ in websocket:
+            pass  # ignore incoming messages, just keep connection alive
+    finally:
+        subscribers.discard(websocket)
+        print(f"[WS] -subscriber ({len(subscribers)} total)")
+
+
+async def main():
+    global loop
+    loop = asyncio.get_running_loop()
+
+    reader_thread = threading.Thread(target=numpad_reader, daemon=True)
+    reader_thread.start()
+
+    async with serve(handler, "0.0.0.0", PORT):
+        print(f"Numpad WS server listening on port {PORT}")
+        await asyncio.Future()  # run forever
 
 
 if __name__ == "__main__":
-    reader_thread = threading.Thread(target=numpad_reader, daemon=True)
-    reader_thread.start()
-    server = HTTPServer(("0.0.0.0", PORT), Handler)
-    print(f"Numpad server listening on port {PORT}")
-    server.serve_forever()
+    asyncio.run(main())
