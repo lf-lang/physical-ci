@@ -54,6 +54,23 @@ python pico/serial_control.py on --mode normally_on  # use normally-on relay mod
 lfc-dev src/parallel.lf && ./bin/parallel
 ```
 
+## Simulation
+
+[trossen_arm_sim](https://github.com/depetrol/trossen_arm_sim) is a drop-in network replacement for the arm controller: it speaks the same wire protocol as the real firmware, so the unmodified `trossen_arm` driver connects to it while the arm runs in MuJoCo. `examples/scene_numpad.xml` places the numpad in the scene to match `examples/positions.json`.
+
+```bash
+pip install trossen_arm_sim
+
+trossen-arm-sim examples/scene_numpad.xml                       # headless
+mjpython -m trossen_arm_sim examples/scene_numpad.xml --viewer  # with viewer (macOS needs mjpython)
+```
+
+With the simulator running, press buttons interactively from another terminal:
+
+```bash
+python examples/press_button.py --sim   # omit --sim to use the real robot at 192.168.1.2
+```
+
 ## CI/CD
 
 **`ci.yml`** — Runs on PRs to `main` on a self-hosted runner with the physical hardware attached. Compiles and executes `src/parallel.lf`.

@@ -1,3 +1,4 @@
+import argparse
 import json
 import numpy as np
 import trossen_arm
@@ -57,6 +58,12 @@ def press_button(driver, key_name, key_positions):
     return True
 
 if __name__=='__main__':
+    parser = argparse.ArgumentParser(description="Press numpad buttons with the WidowX arm")
+    parser.add_argument("--sim", action="store_true",
+                        help="connect to the local trossen_arm_sim server instead of the real robot")
+    args = parser.parse_args()
+    host = "127.0.0.1" if args.sim else "192.168.1.2"
+
     # Read positions from JSON file
     print("Reading positions from positions.json...")
     with open('examples/positions.json', 'r') as f:
@@ -75,11 +82,11 @@ if __name__=='__main__':
     print("\nInitializing the drivers...")
     driver = trossen_arm.TrossenArmDriver()
 
-    print("Configuring the drivers...")
+    print(f"Configuring the drivers ({host})...")
     driver.configure(
         trossen_arm.Model.wxai_v0,
         trossen_arm.StandardEndEffector.wxai_v0_follower,
-        "192.168.1.2",
+        host,
         False
     )
 
