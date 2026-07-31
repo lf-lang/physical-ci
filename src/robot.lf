@@ -8,9 +8,10 @@ preamble {=
     import trossen_arm
 =}
 
-reactor Robot {
+reactor Robot(host = "192.168.1.2") {
     input press_button # str
 
+    output ready # bool
     output pressed_key # str
 
     state key_positions 
@@ -34,7 +35,7 @@ reactor Robot {
         print("Gripper is closed")
     =}
 
-    reaction(startup) {=
+    reaction(startup) -> ready {=
         with open("examples/positions.json", "r") as f:
             data = json.load(f)
         self.key_positions = data.get("key_positions", {})
@@ -43,15 +44,17 @@ reactor Robot {
             exit(1)
 
         self.driver = trossen_arm.TrossenArmDriver()
-        print(f"Configuring driver to {os.environ.get('ROBOT_HOST', '192.168.1.2')}")
+        host = os.environ.get("ROBOT_HOST", self.host)
+        print(f"Configuring driver to {host}")
         self.driver.configure(
             trossen_arm.Model.wxai_v0,
             trossen_arm.StandardEndEffector.wxai_v0_follower,
-            os.environ.get("ROBOT_HOST", "192.168.1.2"),
+            host,
             False
         )
         self.move_to_home()
         self.close_gripper()
+        ready.set(True)
     =}
 
     reaction (press_button) -> pressed_key {=
