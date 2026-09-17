@@ -56,24 +56,34 @@ lfc-dev src/parallel.lf && ./bin/parallel
 
 ## Simulation
 
-[trossen_arm_sim](https://github.com/depetrol/trossen_arm_sim) is a drop-in network replacement for the arm controller: it speaks the same wire protocol as the real firmware, so the unmodified `trossen_arm` driver connects to it while the arm runs in MuJoCo. `examples/scene_numpad.xml` places the numpad in the scene to match `examples/positions.json`.
+[trossen_arm_sim](https://github.com/depetrol/trossen_arm_sim) replaces the arm controller with a MuJoCo simulation that the unmodified `trossen_arm` driver connects to; see its README for usage, scenes and the collision stream. Here it is used with `examples/scene_numpad.xml`, which places the numpad to match `examples/positions.json`, and the program is pointed at it by setting `ROBOT_HOST` to `127.0.0.1`.
 
 ```bash
 pip install trossen_arm_sim
-
-trossen-arm-sim examples/scene_numpad.xml                       # headless
-mjpython -m trossen_arm_sim examples/scene_numpad.xml --viewer  # with viewer (macOS needs mjpython)
-```
-
-With the simulator running, press buttons interactively from another terminal:
-
-```bash
-python examples/press_button.py --sim   # omit --sim to use the real robot at 192.168.1.2
+trossen-arm-sim examples/scene_numpad.xml            # terminal 1
+python examples/press_button.py --sim                # terminal 2; omit --sim for the real robot
 ```
 
 ## CI/CD
 
-**`ci.yml`** — Runs on PRs to `main` on a self-hosted runner with the physical hardware attached. Compiles and executes `src/parallel.lf`.
+**`ci.yml`** — Manual-dispatch pipeline that compiles `src/parallel.lf` and runs the binary in two stages, as two jobs with identical steps. The program only knows the arm at `ROBOT_HOST` and the numpad server at `NUMPAD_SERVER_HOST`, set per runner in its ARC values; whether those are real or simulated is decided outside the container.
+
+1. **`simulate`** — runs against `simulation/simulation.py`, which serves the simulated arm, a simulated numpad server that reports a key whenever the simulated gripper touches it, and collision detection: if the arm touches anything but a key, or presses a key harder than 10 N (`--max-press-force`), the simulated controller faults. The driver in the program then raises, the program exits non-zero and the job fails, exactly as a hardware fault would. The reason is in the simulator's log.
+2. **`execute`** (only after stage 1 passes) — passes if the program exits cleanly, i.e. every key the robot pressed was verified through the numpad server. For now it runs against the same simulation; it moves to the `lf-thor-widowx` runner (`arc-config.yaml`, real arm and `numpad_server.py`) once it should drive the real robot.
+
+Both jobs run on the `mymac` runner (kind under Docker Desktop, `arc-config-sim.yaml`), whose pods reach the Mac at `192.168.65.254`. Serve the simulation there before dispatching:
+
+```bash
+python simulation/simulation.py            # headless
+mjpython simulation/simulation.py --viewer # with the MuJoCo viewer
+```
+
+To run the program locally against it:
+
+```bash
+lfc-dev src/parallel.lf
+ROBOT_HOST=127.0.0.1 NUMPAD_SERVER_HOST=127.0.0.1 ./bin/parallel
+```
 
 **`test.yml`** — Manual-dispatch workflow for [Actions Runner Controller](https://github.com/actions/actions-runner-controller) (Kubernetes-based runners).
 
@@ -159,5 +169,6 @@ src-gen/         Generated C + Python code (gitignored)
 bin/             Executable wrapper scripts (gitignored)
 pico/            Pico W firmware & serial power control
 examples/        Calibration tools, manual test utilities, positions.json
+simulation/      Simulated arm and numpad endpoints with collision detection, for CI
 .github/         CI workflows
 ```

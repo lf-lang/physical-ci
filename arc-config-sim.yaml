@@ -1,0 +1,16 @@
+githubConfigUrl: "https://github.com/depetrol/physical-ci"
+githubConfigSecret:
+  github_token: "${GITHUB_PAT}" # it will not read from environment variables, please override it in the command line
+template:
+  spec:
+    hostNetwork: true
+    dnsPolicy: ClusterFirstWithHostNet
+    containers:
+      - name: runner
+        image: depetrol/lingua-franca:latest
+        command: ["/home/runner/run.sh"]
+        env:
+          - name: NUMPAD_SERVER_HOST
+            value: "192.168.65.254" # Docker Desktop's host.docker.internal IP
+          - name: ROBOT_HOST
+            value: "192.168.65.254" # Docker Desktop's host.docker.internal IP

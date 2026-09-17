@@ -7,14 +7,33 @@ on:
   workflow_dispatch:
 
 jobs:
-  Physical-CI:
-    runs-on: lf-thor-widowx
+  simulate:
+    name: "Simulation Collision Check"
+    runs-on: mymac
     steps:
       - name: Check out repository code
         uses: actions/checkout@v4
 
-      - name: Build and Run Parallel
+      - name: Build
         shell: bash -l {0}
-        run: |
-          lfc src/parallel.lf
-          ./bin/parallel
+        run: lfc src/parallel.lf
+
+      - name: Run
+        shell: bash -l {0}
+        run: ./bin/parallel
+
+  execute:
+    name: "Execution"
+    needs: simulate
+    runs-on: mymac
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+
+      - name: Build
+        shell: bash -l {0}
+        run: lfc src/parallel.lf
+
+      - name: Run
+        shell: bash -l {0}
+        run: ./bin/parallel
