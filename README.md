@@ -9,7 +9,7 @@ GitHub Actions (self-hosted)
     └── Lingua Franca reactor
             ├── InputGenerator  → generates random key sequences
             ├── Robot           → WidowX arm presses the numpad button
-            └── NumpadReceiver  → reads actual numpad input via evdev
+            └── NumpadReceiver  → subscribes to numpad_server.py for the actual key press
 ```
 
 The system compiles LF source (`src/*.lf`) to C extensions + Python wrappers, then executes the reactive test loop: generate key → press button → verify input → repeat.

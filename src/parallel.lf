@@ -6,8 +6,10 @@ preamble {=
     import json
     import numpy as np
     import random
-    import urllib.request
     import os
+    import queue
+    import threading
+    from websockets.sync.client import connect
 =}
 
 
@@ -48,22 +50,40 @@ reactor IntegrationTest {
 reactor NumpadReceiver {
     input read_numpad # str
     output pressed_key # str
-    state numpad_url # str
+    state websocket
+    state keys # queue.Queue of key names pushed by the numpad server
 
     reaction(startup) {=
-        self.numpad_url = f"http://{os.environ.get('NUMPAD_SERVER_HOST', 'localhost')}:5100"
-        print(f"NumpadReceiver: Connecting to numpad server at {self.numpad_url}")
-        urllib.request.urlopen(f"{self.numpad_url}/clear").read()
+        url = f"ws://{os.environ.get('NUMPAD_SERVER_HOST', 'localhost')}:5100"
+        print(f"NumpadReceiver: Connecting to numpad server at {url}")
+        self.websocket = connect(url)
+        self.keys = queue.Queue()
+
+        def listen():
+            try:
+                for key in self.websocket:
+                    self.keys.put(key)
+            finally:
+                self.keys.put(None)  # connection closed
+
+        threading.Thread(target=listen, daemon=True, name="numpad-listener").start()
         print("NumpadReceiver: Ready")
     =}
 
     reaction(read_numpad) -> pressed_key {=
-        response = urllib.request.urlopen(f"{self.numpad_url}/key")
-        key = response.read().decode()
+        # Discard presses that arrived before this command, then wait for the next one.
+        while not self.keys.empty():
+            self.keys.get_nowait()
+        key = self.keys.get()
+        if key is None:
+            raise ConnectionError("NumpadReceiver: numpad server closed the connection")
         print(f"NumpadReceiver: Key pressed: {key}")
         pressed_key.set(key)
     =}
 
+    reaction(shutdown) {=
+        self.websocket.close()
+    =}
 }
 
 main reactor {

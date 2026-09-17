@@ -2,13 +2,13 @@
 ROBOT_HOST and NUMPAD_SERVER_HOST.
 
 Starts trossen_arm_sim with the numpad scene (arm controller on TCP 50001
-and UDP 50000, collision stream on 50002), a numpad server on port 5100 that
-speaks the protocol of numpad_server.py and reports a key whenever the
-simulated gripper touches it, and collision detection that faults the
-simulated controller when the arm touches anything but a key. The CI
-program runs against these endpoints as if they were the real arm and
-numpad: a collision surfaces in the program as a driver error, exactly as a
-hardware fault would.
+and UDP 50000, collision stream on 50002), a numpad WebSocket server on port
+5100 that speaks the protocol of numpad_server.py and pushes a key to every
+subscriber whenever the simulated gripper touches it, and collision
+detection that faults the simulated controller when the arm touches
+anything but a key. The CI program runs against these endpoints as if they
+were the real arm and numpad: a collision surfaces in the program as a
+driver error, exactly as a hardware fault would.
 
     python simulation/simulation.py                # headless
     mjpython simulation/simulation.py --viewer     # with the MuJoCo viewer (macOS)
@@ -18,8 +18,10 @@ import argparse
 import logging
 import threading
 import time
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+
+from websockets.exceptions import ConnectionClosed
+from websockets.sync.server import ServerConnection, serve
 
 from trossen_arm_sim.collision import CollisionMonitor
 from trossen_arm_sim.collision_server import CollisionWebSocketServer
@@ -62,63 +64,48 @@ class ContactListener(threading.Thread):
         raise NotImplementedError
 
 
-class _NumpadHandler(BaseHTTPRequestHandler):
-    """Protocol of numpad_server.py: GET /key blocks until a key is pressed and
-    returns its name; GET /clear discards buffered presses."""
-
-    def do_GET(self) -> None:
-        numpad: SimulatedNumpad = self.server.numpad
-        if self.path == "/key":
-            body = numpad.next_key()
-            if body is None:
-                return  # superseded by a newer request; this client is gone
-        elif self.path == "/clear":
-            numpad.clear()
-            body = "cleared"
-        else:
-            self.send_response(404)
-            self.end_headers()
-            return
-        self.send_response(200)
-        self.send_header("Content-Type", "text/plain")
-        self.end_headers()
-        self.wfile.write(body.encode())
-
-    def log_message(self, format: str, *args) -> None:
-        logging.getLogger("numpad").debug("%s", args[0])
-
-
 class SimulatedNumpad(ContactListener):
     """Stand-in for numpad_server.py: a key counts as pressed when the first
     gripper finger touches its geom, and can be pressed again once both
-    fingers have left it.
-
-    Only the newest /key request is served. A program that dies while
-    waiting on /key leaves its request behind; the next program's /clear or
-    /key supersedes it, so the stale request cannot swallow a key press.
+    fingers have left it. Every press is sent as a text message to all
+    connected WebSocket subscribers; messages from subscribers are ignored.
     """
 
     def __init__(self, monitor: CollisionMonitor, host: str):
         super().__init__(monitor, "numpad")
         self._log = logging.getLogger("numpad")
-        self._keys: list[str] = []
-        self._generation = 0  # bumped by every /key and /clear
-        self._presses = threading.Condition()
         self._touching: dict[str, set[str]] = {}
-        self._server = ThreadingHTTPServer((host, NUMPAD_PORT), _NumpadHandler)
-        self._server.daemon_threads = True
-        self._server.numpad = self
-        self._http = threading.Thread(target=self._server.serve_forever,
-                                      daemon=True, name="numpad-http")
+        self._lock = threading.Lock()
+        self._subscribers: set[ServerConnection] = set()
+        self._server = serve(self._serve_subscriber, host, NUMPAD_PORT)
+        self._ws = threading.Thread(target=self._server.serve_forever,
+                                    daemon=True, name="numpad-ws")
 
     def start(self) -> None:
         super().start()
-        self._http.start()
-        self._log.info("Listening on port %d", NUMPAD_PORT)
+        self._ws.start()
+        self._log.info("Listening on ws://%s:%d", self._server.socket.getsockname()[0], NUMPAD_PORT)
 
     def stop(self) -> None:
         self._server.shutdown()
-        self._server.server_close()
+        with self._lock:
+            for websocket in self._subscribers:
+                websocket.close()
+
+    def _serve_subscriber(self, websocket: ServerConnection) -> None:
+        peer = websocket.remote_address
+        with self._lock:
+            self._subscribers.add(websocket)
+        self._log.info("Subscriber connected: %s (%d total)", peer, len(self._subscribers))
+        try:
+            for _ in websocket:
+                pass  # ignore incoming messages; ends when the subscriber disconnects
+        except ConnectionClosed:
+            pass  # subscriber exited without a close frame
+        finally:
+            with self._lock:
+                self._subscribers.discard(websocket)
+            self._log.info("Subscriber disconnected: %s (%d total)", peer, len(self._subscribers))
 
     def on_contact(self, event: dict) -> None:
         key = pressed_key(event)
@@ -128,28 +115,18 @@ class SimulatedNumpad(ContactListener):
         if event["type"] == "begin":
             if not fingers:
                 self._log.info("Key pressed: %s", key)
-                with self._presses:
-                    self._keys.append(key)
-                    self._presses.notify_all()
+                self._broadcast(key)
             fingers.add(event["geom1"])
         else:
             fingers.discard(event["geom1"])
 
-    def next_key(self) -> str | None:
-        """Discard buffered presses and wait for the next one; None if a newer
-        request superseded this one meanwhile."""
-        with self._presses:
-            generation = self.clear()
-            while not self._keys and self._generation == generation:
-                self._presses.wait()
-            return self._keys.pop(0) if self._generation == generation else None
-
-    def clear(self) -> int:
-        with self._presses:
-            self._keys.clear()
-            self._generation += 1
-            self._presses.notify_all()
-            return self._generation
+    def _broadcast(self, key: str) -> None:
+        with self._lock:
+            for websocket in self._subscribers:
+                try:
+                    websocket.send(key)
+                except ConnectionClosed:
+                    pass  # subscriber left; its handler is about to remove it
 
 
 class CollisionDetection(ContactListener):
