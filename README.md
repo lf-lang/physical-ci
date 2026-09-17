@@ -85,6 +85,8 @@ lfc-dev src/parallel.lf
 ROBOT_HOST=127.0.0.1 NUMPAD_SERVER_HOST=127.0.0.1 ./bin/parallel
 ```
 
+**`collide.yml`** — Manual-dispatch check of the collision detection itself. Runs `src/collide.lf`, which drives the gripper into the floor, on the simulation runner and passes only if the program fails with the controller fault.
+
 **`test.yml`** — Manual-dispatch workflow for [Actions Runner Controller](https://github.com/actions/actions-runner-controller) (Kubernetes-based runners).
 
 ### Docker image
