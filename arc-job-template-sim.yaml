@@ -1,0 +1,18 @@
+# Settings merged into every job pod of the mymac runner. The image comes from the workflow.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: job-template
+  namespace: arc-runners
+data:
+  content: |
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+        - name: $job
+          env:
+            - name: NUMPAD_SERVER_HOST
+              value: "192.168.65.254" # Docker Desktop's host.docker.internal IP
+            - name: ROBOT_HOST
+              value: "192.168.65.254" # Docker Desktop's host.docker.internal IP
