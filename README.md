@@ -110,7 +110,7 @@ ROBOT_HOST=127.0.0.1 NUMPAD_SERVER_HOST=127.0.0.1 ./bin/parallel
 These settings make the cross-repository call possible and gate runs from pull requests:
 
 - **physical-ci is public.** A public repository such as lingua-franca can only call reusable workflows from public repositories.
-- **lingua-franca and physical-ci each have a `physical-ci` environment with required reviewers.** `build-lfc` uses it, so a maintainer approves every run of `lf-pr.yml` before code from the pull request is built or run. Create both before `physical-ci.yml` lands: GitHub creates a missing environment without protection.
+- **lingua-franca and physical-ci each have a `physical-ci` environment whose required reviewer is the [`physical-ci-approvers`](https://github.com/orgs/lf-lang/teams/physical-ci-approvers) team.** `build-lfc` uses the environment, so a team member approves every run of `lf-pr.yml` before code from the pull request is built or run. To let someone else approve runs, add them to the team. Create both before `physical-ci.yml` lands: GitHub creates a missing environment without protection.
 - **lingua-franca requires approval to run workflows from all external contributors.** The runners are in the organization's Default group, which every lf-lang repository can use, so a pull request from a fork could add its own job with `runs-on: mymac`. This approval setting is what stops such a job from running unreviewed.
 - **lingua-franca has a `physical-ci` label.**
 

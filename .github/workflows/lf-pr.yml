@@ -31,7 +31,7 @@ jobs:
         run: tar -czf lfc.tar.gz -C cli/lfc/build/install lfc
 
       - name: Upload lfc
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: lfc
           path: lfc.tar.gz
@@ -51,7 +51,7 @@ jobs:
           repository: lf-lang/physical-ci
 
       - name: Download lfc
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: lfc
 
@@ -79,7 +79,7 @@ jobs:
           repository: lf-lang/physical-ci
 
       - name: Download lfc
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: lfc
 
