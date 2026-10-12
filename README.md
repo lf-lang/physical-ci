@@ -127,6 +127,8 @@ The job pod uses `hostNetwork: true` and `dnsPolicy: ClusterFirstWithHostNet` (c
 
 The commands below are for the robot host. On mymac, run them against a kind cluster (`kind create cluster --name arc`) with the release name `mymac` and `arc-job-template-sim.yaml`. Both hosts share `arc-config.yaml`; its work volume uses the cluster's default storage class (`standard` on kind, `local-path` on k3s). A runner set installed without kubernetes mode is switched by `helm uninstall` and `helm install`, not `helm upgrade`.
 
+Runners register to the `lf-lang` organization in the `physical-ci` runner group, which an organization owner limits to the repositories allowed to run jobs on this hardware. ARC authenticates as the LF-ACT-App GitHub App, which has the organization permission "Self-hosted runners: Read and write". Its credentials are in the `lf-arc-github-app` secret in the `arc-runners` namespace.
+
 ```bash
 # Start Kind (macOS)
 kind create cluster --name arc 
@@ -140,10 +142,15 @@ helm install arc \
 kubectl create namespace arc-runners
 kubectl apply -f arc-job-template.yaml
 
+# GitHub App credentials
+kubectl create secret generic lf-arc-github-app -n arc-runners \
+    --from-literal=github_app_id=5203721 \
+    --from-literal=github_app_installation_id=168636877 \
+    --from-file=github_app_private_key=/path/to/lf-act-app.private-key.pem
+
 # Deploy runner scale set
 helm install "lf-thor-widowx" \
     --namespace "arc-runners" \
-    --set githubConfigSecret.github_token="$GITHUB_PAT" \
     --set maxRunners=1 \
     -f arc-config.yaml \
     oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set
@@ -152,7 +159,6 @@ helm install "lf-thor-widowx" \
 kubectl apply -f arc-job-template.yaml
 helm upgrade "lf-thor-widowx" \
     --namespace "arc-runners" \
-    --set githubConfigSecret.github_token="$GITHUB_PAT" \
     --set maxRunners=1 \
     -f arc-config.yaml \
     oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set
@@ -198,7 +204,7 @@ crontab -e
 0 4 * * * cd /path/to/physical-ci && scripts/stop_ci.sh >> ci.log 2>&1
 ```
 
-`GITHUB_PAT` must be set in your environment (e.g. in `~/.bashrc`). The system timezone must be set to `America/Los_Angeles` (`timedatectl set-timezone America/Los_Angeles`).
+The system timezone must be set to `America/Los_Angeles` (`timedatectl set-timezone America/Los_Angeles`).
 
 ## Project structure
 

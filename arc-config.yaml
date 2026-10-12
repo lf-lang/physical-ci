@@ -1,6 +1,5 @@
-githubConfigUrl: "https://github.com/depetrol/physical-ci"
-githubConfigSecret:
-  github_token: "${GITHUB_PAT}" # it will not read from environment variables, please override it in the command line
+githubConfigUrl: "https://github.com/lf-lang"
+githubConfigSecret: lf-arc-github-app # secret in arc-runners with the GitHub App ID, installation ID and private key
 containerMode:
   type: "kubernetes" # each job runs in its own pod, from the image in the workflow's `container:`
   kubernetesModeWorkVolumeClaim:
