@@ -103,13 +103,24 @@ ROBOT_HOST=127.0.0.1 NUMPAD_SERVER_HOST=127.0.0.1 ./bin/parallel
 
 `collide.yml` — Manual-dispatch check of the collision detection itself. Runs `src/collide.lf`, which drives the gripper into the floor, on the simulation runner; the job fails when the simulation faults the controller on the collision.
 
+`lf-pr.yml` — Reusable workflow that tests a lingua-franca pull request on this hardware. lingua-franca's `physical-ci.yml` calls it when a pull request is labeled `physical-ci`, and again on each new commit while the label is present. It runs in lingua-franca's context: `build-lfc` checks out the pull request's merge commit, builds `lfc` with `./gradlew :cli:lfc:installDist`, and uploads it as the `lfc` artifact. `simulate` and `execute` install that `lfc` into the job image and run the same steps as `ci.yml`, so results appear as checks on the pull request.
+
+### Testing lingua-franca pull requests
+
+These settings make the cross-repository call possible and gate runs from pull requests:
+
+- **physical-ci is public.** A public repository such as lingua-franca can only call reusable workflows from public repositories.
+- **lingua-franca and physical-ci each have a `physical-ci` environment with required reviewers.** `build-lfc` uses it, so a maintainer approves every run of `lf-pr.yml` before code from the pull request is built or run. Create both before `physical-ci.yml` lands: GitHub creates a missing environment without protection.
+- **lingua-franca requires approval to run workflows from all external contributors.** The runners are in the organization's Default group, which every lf-lang repository can use, so a pull request from a fork could add its own job with `runs-on: mymac`. This approval setting is what stops such a job from running unreviewed.
+- **lingua-franca has a `physical-ci` label.**
+
 `test.yml` — Manual-dispatch workflow for [Actions Runner Controller](https://github.com/actions/actions-runner-controller) (Kubernetes-based runners).
 
 ### Job image
 
 Every job names its image in the workflow's `container:` key. The runners use ARC's kubernetes mode: the runner pod runs only the GitHub runner, and for each job it starts a separate pod from that image. The runner's job template (`arc-job-template*.yaml`) adds host networking and the `ROBOT_HOST` and `NUMPAD_SERVER_HOST` env to that pod; it cannot change the image.
 
-To use another image, change `container.image` in the workflow. The image needs `bash` and `lfc` on its `PATH`, and the cluster must be able to pull it: push it to a registry, or on mymac load a local build into kind.
+To use another image, change `container.image` in the workflow. The image needs `bash`, Java 17 or newer, and the program's Python packages, plus `lfc` on its `PATH` for `ci.yml` and `collide.yml` (`lf-pr.yml` brings its own `lfc`), and the cluster must be able to pull it: push it to a registry, or on mymac load a local build into kind.
 
 ```bash
 docker build -t depetrol/lingua-franca .
@@ -127,7 +138,7 @@ The job pod uses `hostNetwork: true` and `dnsPolicy: ClusterFirstWithHostNet` (c
 
 The commands below are for the robot host. On mymac, run them against a kind cluster (`kind create cluster --name arc`) with the release name `mymac` and `arc-job-template-sim.yaml`. Both hosts share `arc-config.yaml`; its work volume uses the cluster's default storage class (`standard` on kind, `local-path` on k3s). A runner set installed without kubernetes mode is switched by `helm uninstall` and `helm install`, not `helm upgrade`.
 
-Runners register to the `lf-lang` organization in the `physical-ci` runner group, which an organization owner limits to the repositories allowed to run jobs on this hardware. ARC authenticates as the LF-ACT-App GitHub App, which has the organization permission "Self-hosted runners: Read and write". Its credentials are in the `lf-arc-github-app` secret in the `arc-runners` namespace.
+Runners register to the `lf-lang` organization in its Default runner group. ARC authenticates as the LF-ACT-App GitHub App, which has the organization permission "Self-hosted runners: Read and write". Its credentials are in the `lf-arc-github-app` secret in the `arc-runners` namespace.
 
 ```bash
 # Start Kind (macOS)

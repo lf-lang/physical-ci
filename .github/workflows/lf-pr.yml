@@ -1,0 +1,95 @@
+name: Physical CI for lingua-franca
+
+# Called by lingua-franca's physical-ci.yml on pull requests labeled `physical-ci`.
+
+on:
+  workflow_call:
+
+jobs:
+  build-lfc:
+    name: "Build lfc"
+    runs-on: ubuntu-24.04
+    environment: physical-ci
+    steps:
+      # Check out the pull request's merge commit in lingua-franca's context.
+      - name: Check out the pull request
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Build lfc
+        run: ./gradlew --no-daemon :cli:lfc:installDist
+
+      # Artifact uploads drop file permissions; the tarball keeps bin/lfc executable.
+      - name: Package lfc
+        run: tar -czf lfc.tar.gz -C cli/lfc/build/install lfc
+
+      - name: Upload lfc
+        uses: actions/upload-artifact@v4
+        with:
+          name: lfc
+          path: lfc.tar.gz
+          retention-days: 7
+          overwrite: true # artifacts are immutable; a re-run of this job replaces the previous attempt's lfc
+
+  simulate:
+    name: "Simulation Collision Check"
+    needs: build-lfc
+    runs-on: mymac
+    container:
+      image: depetrol/lingua-franca:latest
+    steps:
+      - name: Check out physical-ci
+        uses: actions/checkout@v4
+        with:
+          repository: lf-lang/physical-ci
+
+      - name: Download lfc
+        uses: actions/download-artifact@v4
+        with:
+          name: lfc
+
+      - name: Install lfc
+        run: tar -xzf lfc.tar.gz -C /opt
+
+      - name: Build
+        shell: bash -l {0}
+        run: /opt/lfc/bin/lfc src/parallel.lf
+
+      - name: Run
+        shell: bash -l {0}
+        run: ./bin/parallel
+
+  execute:
+    name: "Execution"
+    needs: simulate
+    runs-on: mymac
+    container:
+      image: depetrol/lingua-franca:latest
+    steps:
+      - name: Check out physical-ci
+        uses: actions/checkout@v4
+        with:
+          repository: lf-lang/physical-ci
+
+      - name: Download lfc
+        uses: actions/download-artifact@v4
+        with:
+          name: lfc
+
+      - name: Install lfc
+        run: tar -xzf lfc.tar.gz -C /opt
+
+      - name: Build
+        shell: bash -l {0}
+        run: /opt/lfc/bin/lfc src/parallel.lf
+
+      - name: Run
+        shell: bash -l {0}
+        run: ./bin/parallel
