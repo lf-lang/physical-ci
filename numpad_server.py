@@ -10,6 +10,7 @@ import os
 import sys
 import threading
 from websockets.asyncio.server import serve
+from websockets.exceptions import ConnectionClosed
 
 from evdev import InputDevice, categorize, ecodes
 
@@ -25,10 +26,21 @@ loop: asyncio.AbstractEventLoop = None
 def numpad_reader():
     try:
         read_numpad()
-    except OSError as e:
+    except Exception as e:
         # Exit the whole process rather than leave a server that never reports keys.
-        print(f"Numpad {DEVICE_PATH} unavailable: {e}", file=sys.stderr)
+        print(f"Numpad reader failed on {DEVICE_PATH}: {e!r}", file=sys.stderr)
         os._exit(1)
+
+
+def key_name(key_event) -> str | None:
+    """Name reported for a key event: the part after KEY_KP, e.g. "7" for KEY_KP7 and
+    "ENTER" for KEY_KPENTER. None for keys that are not numpad keys, such as NumLock.
+    evdev gives a list of names when a scancode maps to several keycodes."""
+    codes = key_event.keycode if isinstance(key_event.keycode, list) else [key_event.keycode]
+    for code in codes:
+        if code.startswith("KEY_KP"):
+            return code[len("KEY_KP"):]
+    return None
 
 
 def read_numpad():
@@ -45,9 +57,12 @@ def read_numpad():
         if event.type == ecodes.EV_KEY:
             key_event = categorize(event)
             if key_event.keystate == 1:  # Key Down
-                key_name = key_event.keycode.split("KEY_KP")[1]
-                print(f"Key pressed: {key_name}")
-                loop.call_soon_threadsafe(asyncio.ensure_future, broadcast(key_name))
+                name = key_name(key_event)
+                if name is None:
+                    print(f"Ignored non-numpad key: {key_event.keycode}")
+                    continue
+                print(f"Key pressed: {name}")
+                loop.call_soon_threadsafe(asyncio.ensure_future, broadcast(name))
 
 
 async def broadcast(key: str):
@@ -64,6 +79,8 @@ async def handler(websocket):
     try:
         async for _ in websocket:
             pass  # ignore incoming messages, just keep connection alive
+    except ConnectionClosed:
+        pass  # subscriber left without a clean close
     finally:
         subscribers.discard(websocket)
         print(f"[WS] -subscriber ({len(subscribers)} total)")

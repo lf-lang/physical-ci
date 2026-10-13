@@ -6,7 +6,7 @@ FROM eclipse-temurin:21-jre-noble
 
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-        cmake gcc libc6-dev make \
+        cmake gcc libc6-dev make procps \
         python3-dev python3-pip \
     && rm -rf /var/lib/apt/lists/*
 

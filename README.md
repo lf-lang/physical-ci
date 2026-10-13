@@ -107,6 +107,8 @@ On the robot host the full simulation (`simulation/simulation.py`, see CI/CD) ru
 1. `simulate` — runs against `simulation/simulation.py`, which serves the simulated arm, a simulated numpad server that reports a key whenever the simulated gripper touches it, and collision detection: if the arm touches anything but a key, or presses a key harder than 10 N (`--max-press-force`), the simulated controller faults. The driver in the program then raises, the program exits non-zero and the job fails, exactly as a hardware fault would. The reason is in the simulator's log.
 2. `execute` (only after stage 1 passes) — passes if the program exits cleanly, i.e. every key the robot pressed was verified through the numpad server. It runs on the `lf-thor-widowx` runner, which drives the real arm and verifies through `numpad_server.py` on that host.
 
+Every job that runs the program has `timeout-minutes: 5` and ends with a step that runs `examples/home.py` whatever happened to the program (`if: always()`): it ends a program left over from a cancelled step, clears any controller error and parks the arm with the gripper closed. The program's own shutdown reaction does the same on a clean stop, but not when a reaction fails, which exits the runtime without shutdown reactions, nor when the job is cancelled or times out. The step also resets the simulation after a collision fault, so the next run starts clean.
+
 `simulate` runs on the `lf-thor-sim` runner, on the same host as `lf-thor-widowx`; its jobs reach the simulation at `127.0.0.2`, where the tmux session from Host services serves it. To run the simulation by hand elsewhere:
 
 ```bash

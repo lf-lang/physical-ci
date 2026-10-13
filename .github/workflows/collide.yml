@@ -39,6 +39,7 @@ jobs:
     name: "Arm into the floor"
     needs: build-lfc
     runs-on: lf-thor-sim
+    timeout-minutes: 5
     container:
       image: depetrol/physical-ci:latest
     steps:
@@ -60,3 +61,13 @@ jobs:
       - name: Run
         shell: bash -l {0}
         run: ./bin/collide
+
+      # Runs whatever happened to the program: failure, cancellation or the job timeout. A program
+      # from a cancelled step may still hold the arm, so end it first, then clear any controller
+      # error and park the arm.
+      - name: Return the arm to its home position
+        if: always()
+        shell: bash -l {0}
+        run: |
+          pkill -f src-gen/ || true
+          python3 examples/home.py
