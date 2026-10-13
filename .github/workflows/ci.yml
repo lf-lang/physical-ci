@@ -7,8 +7,40 @@ on:
   workflow_dispatch:
 
 jobs:
+  build-lfc:
+    name: "Build lfc"
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out lingua-franca
+        uses: actions/checkout@v4
+        with:
+          repository: lf-lang/lingua-franca
+          submodules: recursive
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Build lfc
+        run: ./gradlew --no-daemon :cli:lfc:installDist
+
+      # Artifact uploads drop file permissions; the tarball keeps bin/lfc executable.
+      - name: Package lfc
+        run: tar -czf lfc.tar.gz -C cli/lfc/build/install lfc
+
+      - name: Upload lfc
+        uses: actions/upload-artifact@v7
+        with:
+          name: lfc
+          path: lfc.tar.gz
+          retention-days: 7
+          overwrite: true # artifacts are immutable; a re-run of this job replaces the previous attempt's lfc
+
   simulate:
     name: "Simulation Collision Check"
+    needs: build-lfc
     runs-on: mymac
     container:
       image: depetrol/physical-ci:latest
@@ -16,9 +48,17 @@ jobs:
       - name: Check out repository code
         uses: actions/checkout@v4
 
+      - name: Download lfc
+        uses: actions/download-artifact@v8
+        with:
+          name: lfc
+
+      - name: Install lfc
+        run: tar -xzf lfc.tar.gz -C /opt
+
       - name: Build
         shell: bash -l {0}
-        run: lfc src/parallel.lf
+        run: /opt/lfc/bin/lfc src/parallel.lf
 
       - name: Run
         shell: bash -l {0}
@@ -27,16 +67,24 @@ jobs:
   execute:
     name: "Execution"
     needs: simulate
-    runs-on: mymac
+    runs-on: lf-thor-widowx
     container:
       image: depetrol/physical-ci:latest
     steps:
       - name: Check out repository code
         uses: actions/checkout@v4
 
+      - name: Download lfc
+        uses: actions/download-artifact@v8
+        with:
+          name: lfc
+
+      - name: Install lfc
+        run: tar -xzf lfc.tar.gz -C /opt
+
       - name: Build
         shell: bash -l {0}
-        run: lfc src/parallel.lf
+        run: /opt/lfc/bin/lfc src/parallel.lf
 
       - name: Run
         shell: bash -l {0}

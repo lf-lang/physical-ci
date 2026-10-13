@@ -82,12 +82,12 @@ python examples/press_button.py --sim                # terminal 2; omit --sim fo
 
 ## CI/CD
 
-`ci.yml` — Manual-dispatch pipeline that compiles `src/parallel.lf` and runs the binary in two stages, as two jobs with identical steps. The program only knows the arm at `ROBOT_HOST` and the numpad server at `NUMPAD_SERVER_HOST`, set per runner in its job template (`arc-job-template*.yaml`); whether those are real or simulated is decided outside the container.
+`ci.yml` — Manual-dispatch pipeline that compiles `src/parallel.lf` and runs the binary in two stages, as two jobs with identical steps. A `build-lfc` job first builds `lfc` from lingua-franca's default branch and uploads it as the `lfc` artifact; the two stages install it into the job image. The program only knows the arm at `ROBOT_HOST` and the numpad server at `NUMPAD_SERVER_HOST`, set per runner in its job template (`arc-job-template*.yaml`); whether those are real or simulated is decided outside the container.
 
 1. `simulate` — runs against `simulation/simulation.py`, which serves the simulated arm, a simulated numpad server that reports a key whenever the simulated gripper touches it, and collision detection: if the arm touches anything but a key, or presses a key harder than 10 N (`--max-press-force`), the simulated controller faults. The driver in the program then raises, the program exits non-zero and the job fails, exactly as a hardware fault would. The reason is in the simulator's log.
-2. `execute` (only after stage 1 passes) — passes if the program exits cleanly, i.e. every key the robot pressed was verified through the numpad server. For now it runs against the same simulation; it moves to the `lf-thor-widowx` runner (`arc-job-template.yaml`, real arm and `numpad_server.py`) once it should drive the real robot.
+2. `execute` (only after stage 1 passes) — passes if the program exits cleanly, i.e. every key the robot pressed was verified through the numpad server. It runs on the `lf-thor-widowx` runner (`arc-job-template.yaml`), which drives the real arm and verifies through `numpad_server.py` on that host.
 
-Both jobs run on the `mymac` runner (kind under Docker Desktop, `arc-job-template-sim.yaml`), whose pods reach the Mac at `192.168.65.254`. Serve the simulation there before dispatching:
+`simulate` runs on the `mymac` runner (kind under Docker Desktop, `arc-job-template-sim.yaml`), whose pods reach the Mac at `192.168.65.254`. Serve the simulation there before dispatching:
 
 ```bash
 python simulation/simulation.py            # headless
@@ -101,9 +101,9 @@ lfc-dev src/parallel.lf
 ROBOT_HOST=127.0.0.1 NUMPAD_SERVER_HOST=127.0.0.1 ./bin/parallel
 ```
 
-`collide.yml` — Manual-dispatch check of the collision detection itself. Runs `src/collide.lf`, which drives the gripper into the floor, on the simulation runner; the job fails when the simulation faults the controller on the collision.
+`collide.yml` — Manual-dispatch check of the collision detection itself. Builds `lfc` like `ci.yml`, then runs `src/collide.lf`, which drives the gripper into the floor, on the simulation runner; the job fails when the simulation faults the controller on the collision.
 
-`lf-pr.yml` — Reusable workflow that tests a lingua-franca pull request on this hardware. lingua-franca's `physical-ci.yml` calls it when a pull request is labeled `physical-ci`, and again on each new commit while the label is present. It runs in lingua-franca's context: `build-lfc` checks out the pull request's merge commit, builds `lfc` with `./gradlew :cli:lfc:installDist`, and uploads it as the `lfc` artifact. `simulate` and `execute` install that `lfc` into the job image and run the same steps as `ci.yml`, so results appear as checks on the pull request.
+`lf-pr.yml` — Reusable workflow that tests a lingua-franca pull request on this hardware. lingua-franca's `physical-ci.yml` calls it when a pull request is labeled `physical-ci`, and again on each new commit while the label is present. It runs in lingua-franca's context: `build-lfc` checks out the pull request's merge commit, builds `lfc` with `./gradlew :cli:lfc:installDist`, and uploads it as the `lfc` artifact. `simulate` and `execute` install that `lfc` into the job image and run the same steps as `ci.yml`, so results appear as checks on the pull request. Its `execute` job still runs on `mymac` against the simulation; move it to `lf-thor-widowx` once `ci.yml` passes on the real robot.
 
 ### Testing lingua-franca pull requests
 
