@@ -38,7 +38,7 @@ jobs:
   collide:
     name: "Arm into the floor"
     needs: build-lfc
-    runs-on: mymac
+    runs-on: lf-thor-sim
     container:
       image: depetrol/physical-ci:latest
     steps:

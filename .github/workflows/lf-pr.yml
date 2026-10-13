@@ -41,7 +41,7 @@ jobs:
   simulate:
     name: "Simulation Collision Check"
     needs: build-lfc
-    runs-on: mymac
+    runs-on: lf-thor-sim
     container:
       image: depetrol/physical-ci:latest
     steps:
@@ -69,7 +69,7 @@ jobs:
   execute:
     name: "Execution"
     needs: simulate
-    runs-on: mymac
+    runs-on: lf-thor-sim
     container:
       image: depetrol/physical-ci:latest
     steps:

@@ -15,7 +15,7 @@ template:
         command: ["/home/runner/run.sh"]
         env:
           - name: ACTIONS_RUNNER_CONTAINER_HOOK_TEMPLATE
-            value: /home/runner/job-template/content # job pod settings from this host's arc-job-template*.yaml
+            value: /home/runner/job-template/content # job pod settings from arc-job-templates.yaml
         volumeMounts:
           - name: job-template
             mountPath: /home/runner/job-template

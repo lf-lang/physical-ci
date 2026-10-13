@@ -60,6 +60,24 @@ python pico/serial_control.py on --mode normally_on  # use normally-on relay mod
 
 
 
+### Host services
+
+`numpad_server.py` (real numpad, `127.0.0.1:5100`) and `simulation/simulation.py` (simulated arm and numpad, `127.0.0.2`) must be running for CI jobs to find them. Both run by hand, each in its own tmux session, so their logs are at hand: the key presses of the numpad server, and the collision reasons of the simulation. Neither survives a reboot; start them again before dispatching CI.
+
+Reading the numpad needs membership in the `input` group (`sudo usermod -aG input $USER`, then log in again). The server exits if the numpad is missing or unplugged; rerun it after plugging the numpad in.
+
+```bash
+pip install websockets evdev trossen_arm_sim
+
+tmux new -s numpad                                   # detach with Ctrl-b d, return with: tmux attach -t numpad
+python numpad_server.py                              # prints each key as it is pressed
+
+tmux new -s sim
+python simulation/simulation.py --host 127.0.0.2     # simulated arm and numpad on the loopback alias
+```
+
+
+
 ### Build & run
 
 ```bash
@@ -78,23 +96,25 @@ trossen-arm-sim examples/scene_numpad.xml            # terminal 1
 python examples/press_button.py --sim                # terminal 2; omit --sim for the real robot
 ```
 
+On the robot host the full simulation (`simulation/simulation.py`, see CI/CD) runs in a tmux session bound to `127.0.0.2` (see Host services): Linux routes all of 127.0.0.0/8 to loopback, so the simulated arm and numpad do not collide with `numpad_server.py`, which listens on `127.0.0.1`. The `lf-thor-sim` runner's jobs reach the simulation there.
+
 
 
 ## CI/CD
 
-`ci.yml` — Manual-dispatch pipeline that compiles `src/parallel.lf` and runs the binary in two stages, as two jobs with identical steps. A `build-lfc` job first builds `lfc` from lingua-franca's default branch and uploads it as the `lfc` artifact; the two stages install it into the job image. The program only knows the arm at `ROBOT_HOST` and the numpad server at `NUMPAD_SERVER_HOST`, set per runner in its job template (`arc-job-template*.yaml`); whether those are real or simulated is decided outside the container.
+`ci.yml` — Manual-dispatch pipeline that compiles `src/parallel.lf` and runs the binary in two stages, as two jobs with identical steps. A `build-lfc` job first builds `lfc` from lingua-franca's default branch and uploads it as the `lfc` artifact; the two stages install it into the job image. The program only knows the arm at `ROBOT_HOST` and the numpad server at `NUMPAD_SERVER_HOST`, set per runner in its job template (`arc-job-templates.yaml`); whether those are real or simulated is decided outside the container.
 
 1. `simulate` — runs against `simulation/simulation.py`, which serves the simulated arm, a simulated numpad server that reports a key whenever the simulated gripper touches it, and collision detection: if the arm touches anything but a key, or presses a key harder than 10 N (`--max-press-force`), the simulated controller faults. The driver in the program then raises, the program exits non-zero and the job fails, exactly as a hardware fault would. The reason is in the simulator's log.
-2. `execute` (only after stage 1 passes) — passes if the program exits cleanly, i.e. every key the robot pressed was verified through the numpad server. It runs on the `lf-thor-widowx` runner (`arc-job-template.yaml`), which drives the real arm and verifies through `numpad_server.py` on that host.
+2. `execute` (only after stage 1 passes) — passes if the program exits cleanly, i.e. every key the robot pressed was verified through the numpad server. It runs on the `lf-thor-widowx` runner, which drives the real arm and verifies through `numpad_server.py` on that host.
 
-`simulate` runs on the `mymac` runner (kind under Docker Desktop, `arc-job-template-sim.yaml`), whose pods reach the Mac at `192.168.65.254`. Serve the simulation there before dispatching:
+`simulate` runs on the `lf-thor-sim` runner, on the same host as `lf-thor-widowx`; its jobs reach the simulation at `127.0.0.2`, where the tmux session from Host services serves it. To run the simulation by hand elsewhere:
 
 ```bash
-python simulation/simulation.py            # headless
-mjpython simulation/simulation.py --viewer # with the MuJoCo viewer
+python simulation/simulation.py            # headless, on all interfaces
+mjpython simulation/simulation.py --viewer # with the MuJoCo viewer (macOS)
 ```
 
-To run the program locally against it:
+To run the program locally against it (`127.0.0.2` on the robot host):
 
 ```bash
 lfc-dev src/parallel.lf
@@ -103,7 +123,7 @@ ROBOT_HOST=127.0.0.1 NUMPAD_SERVER_HOST=127.0.0.1 ./bin/parallel
 
 `collide.yml` — Manual-dispatch check of the collision detection itself. Builds `lfc` like `ci.yml`, then runs `src/collide.lf`, which drives the gripper into the floor, on the simulation runner; the job fails when the simulation faults the controller on the collision.
 
-`lf-pr.yml` — Reusable workflow that tests a lingua-franca pull request on this hardware. lingua-franca's `physical-ci.yml` calls it when a pull request is labeled `physical-ci`, and again on each new commit while the label is present. It runs in lingua-franca's context: `build-lfc` checks out the pull request's merge commit, builds `lfc` with `./gradlew :cli:lfc:installDist`, and uploads it as the `lfc` artifact. `simulate` and `execute` install that `lfc` into the job image and run the same steps as `ci.yml`, so results appear as checks on the pull request. Its `execute` job still runs on `mymac` against the simulation; move it to `lf-thor-widowx` once `ci.yml` passes on the real robot.
+`lf-pr.yml` — Reusable workflow that tests a lingua-franca pull request on this hardware. lingua-franca's `physical-ci.yml` calls it when a pull request is labeled `physical-ci`, and again on each new commit while the label is present. It runs in lingua-franca's context: `build-lfc` checks out the pull request's merge commit, builds `lfc` with `./gradlew :cli:lfc:installDist`, and uploads it as the `lfc` artifact. `simulate` and `execute` install that `lfc` into the job image and run the same steps as `ci.yml`, so results appear as checks on the pull request. Its `execute` job still runs on `lf-thor-sim` against the simulation; move it to `lf-thor-widowx` once `ci.yml` passes on the real robot.
 
 ### Testing lingua-franca pull requests
 
@@ -111,20 +131,19 @@ These settings make the cross-repository call possible and gate runs from pull r
 
 - **physical-ci is public.** A public repository such as lingua-franca can only call reusable workflows from public repositories.
 - **lingua-franca and physical-ci each have a `physical-ci` environment whose required reviewer is the [`physical-ci-approvers`](https://github.com/orgs/lf-lang/teams/physical-ci-approvers) team.** `build-lfc` uses the environment, so a team member approves every run of `lf-pr.yml` before code from the pull request is built or run. To let someone else approve runs, add them to the team. Create both before `physical-ci.yml` lands: GitHub creates a missing environment without protection.
-- **lingua-franca requires approval to run workflows from all external contributors.** The runners are in the organization's Default group, which every lf-lang repository can use, so a pull request from a fork could add its own job with `runs-on: mymac`. This approval setting is what stops such a job from running unreviewed.
+- **lingua-franca requires approval to run workflows from all external contributors.** The runners are in the organization's Default group, which every lf-lang repository can use, so a pull request from a fork could add its own job with `runs-on: lf-thor-widowx`. This approval setting is what stops such a job from running unreviewed.
 - **lingua-franca has a `physical-ci` label.**
 
 `test.yml` — Manual-dispatch workflow for [Actions Runner Controller](https://github.com/actions/actions-runner-controller) (Kubernetes-based runners).
 
 ### Job image
 
-Every job names its image in the workflow's `container:` key. The runners use ARC's kubernetes mode: the runner pod runs only the GitHub runner, and for each job it starts a separate pod from that image. The runner's job template (`arc-job-template*.yaml`) adds host networking and the `ROBOT_HOST` and `NUMPAD_SERVER_HOST` env to that pod; it cannot change the image.
+Every job names its image in the workflow's `container:` key. The runners use ARC's kubernetes mode: the runner pod runs only the GitHub runner, and for each job it starts a separate pod from that image. The runner's job template (`arc-job-templates.yaml`) adds host networking and the `ROBOT_HOST` and `NUMPAD_SERVER_HOST` env to that pod; it cannot change the image.
 
-To use another image, change `container.image` in the workflow. The image does not contain `lfc`: each workflow installs the `lfc` it tests into the job (`lf-pr.yml` downloads the one its `build-lfc` job built). The image needs what that `lfc` and the program need: `bash`, Java 17 or newer, a C toolchain with CMake and the Python headers for the Python target, and the program's Python packages. The cluster must be able to pull it: push it to a registry, or on mymac load a local build into kind. The lf-thor-widowx runner is arm64, so a pushed image must be built for both platforms.
+To use another image, change `container.image` in the workflow. The image does not contain `lfc`: each workflow installs the `lfc` it tests into the job (`lf-pr.yml` downloads the one its `build-lfc` job built). The image needs what that `lfc` and the program need: `bash`, Java 17 or newer, a C toolchain with CMake and the Python headers for the Python target, and the program's Python packages. The cluster pulls it from the registry. The robot host is arm64, so build the image for arm64 as well as amd64:
 
 ```bash
 docker buildx build --platform linux/amd64,linux/arm64 -t depetrol/physical-ci --push .
-docker build -t depetrol/physical-ci . && kind load docker-image depetrol/physical-ci --name arc   # mymac only, local build that is not pushed
 ```
 
 
@@ -133,43 +152,53 @@ docker build -t depetrol/physical-ci . && kind load docker-image depetrol/physic
 
 ARC runners must use **k3s** (not minikube). Minikube's Docker driver wraps the cluster in a container, so `hostNetwork: true` only exposes the minikube container's network — not the host LAN where the robot lives. k3s runs natively on the host, so `hostNetwork: true` gives pods direct access to the physical network.
 
-The job pod uses `hostNetwork: true` and `dnsPolicy: ClusterFirstWithHostNet` (configured in `arc-job-template.yaml`) to reach the robot at `192.168.1.2`. The robot IP is configurable via the `ROBOT_HOST` environment variable.
+The job pod uses `hostNetwork: true` and `dnsPolicy: ClusterFirstWithHostNet` (configured in the job templates) to reach the robot at `192.168.1.2` and the services on the host's loopback. The robot IP is configurable via the `ROBOT_HOST` environment variable.
 
-The commands below are for the robot host. On mymac, run them against a kind cluster (`kind create cluster --name arc`) with the release name `mymac` and `arc-job-template-sim.yaml`. Both hosts share `arc-config.yaml`; its work volume uses the cluster's default storage class (`standard` on kind, `local-path` on k3s). A runner set installed without kubernetes mode is switched by `helm uninstall` and `helm install`, not `helm upgrade`.
+Two runner scale sets run in the same cluster from the same `arc-config.yaml`: `lf-thor-widowx` for the real robot and `lf-thor-sim` for the simulation. They differ only in the job template ConfigMap they mount, both defined in `arc-job-templates.yaml`: `job-template` by default, `job-template-sim` for the sim set through the `--set` on its helm command. The work volume uses k3s's default `local-path` storage class. A runner set installed without kubernetes mode is switched by `helm uninstall` and `helm install`, not `helm upgrade`.
 
 Runners register to the `lf-lang` organization in its Default runner group. ARC authenticates as the LF-ACT-App GitHub App, which has the organization permission "Self-hosted runners: Read and write". Its credentials are in the `lf-arc-github-app` secret in the `arc-runners` namespace.
 
 ```bash
-# Start Kind (macOS)
-kind create cluster --name arc 
 # Install ARC controller
 helm install arc \
     --namespace "arc-controller" \
     --create-namespace \
     oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set-controller
 
-# Job pod template, mounted by the runner pods
+# Job pod templates, one per runner scale set, mounted by its runner pods
 kubectl create namespace arc-runners
-kubectl apply -f arc-job-template.yaml
+kubectl apply -f arc-job-templates.yaml
 
 # GitHub App credentials
 kubectl create secret generic lf-arc-github-app -n arc-runners \
     --from-literal=github_app_id=5203721 \
     --from-literal=github_app_installation_id=168636877 \
-    --from-file=github_app_private_key=/path/to/lf-act-app.private-key.pem
+    --from-file=github_app_private_key=lf-act-app.private-key.pem   # the App's private key from GitHub, kept here: *.pem is gitignored
 
-# Deploy runner scale set
+# Deploy the runner scale sets
 helm install "lf-thor-widowx" \
     --namespace "arc-runners" \
     --set maxRunners=1 \
     -f arc-config.yaml \
     oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set
+helm install "lf-thor-sim" \
+    --namespace "arc-runners" \
+    --set maxRunners=1 \
+    --set 'template.spec.volumes[0].configMap.name=job-template-sim' \
+    -f arc-config.yaml \
+    oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set
 
-# Upgrade after config changes
-kubectl apply -f arc-job-template.yaml
+# Upgrade after config changes: re-apply the templates, then helm upgrade with the same flags as the install
+kubectl apply -f arc-job-templates.yaml
 helm upgrade "lf-thor-widowx" \
     --namespace "arc-runners" \
     --set maxRunners=1 \
+    -f arc-config.yaml \
+    oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set
+helm upgrade "lf-thor-sim" \
+    --namespace "arc-runners" \
+    --set maxRunners=1 \
+    --set 'template.spec.volumes[0].configMap.name=job-template-sim' \
     -f arc-config.yaml \
     oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set
 ```
@@ -180,6 +209,7 @@ helm upgrade "lf-thor-widowx" \
 
 ```bash
 helm uninstall lf-thor-widowx --namespace arc-runners
+helm uninstall lf-thor-sim --namespace arc-runners
 helm uninstall arc --namespace arc-controller
 ```
 
@@ -191,7 +221,7 @@ helm uninstall arc --namespace arc-controller
 kubectl get pods -n arc-controller     # controller + listener status
 kubectl get pods -n arc-runners        # runner pods, and a <runner-pod>-workflow pod per running job
 kubectl logs -n arc-controller -l app.kubernetes.io/name=gha-runner-scale-set-controller  # controller logs
-kubectl logs -n arc-runners -l actions.github.com/scale-set-name=lf-thor-widowx           # runner logs
+kubectl logs -n arc-runners -l actions.github.com/scale-set-name=lf-thor-widowx           # runner logs (lf-thor-sim likewise)
 
 # live logs of a currently running runner pod
 kubectl get pods -n arc-runners                          # find the pod name
@@ -200,21 +230,20 @@ kubectl logs -f -n arc-runners <pod-name>                # follow logs
 
 
 
-### Scheduling CI
+### Robot window
 
-To run CI automatically overnight (1 AM–5 AM PST), add crontab entries:
+`lf-thor-sim` stays available around the clock, so the `simulate` stage runs at any time. The robot is only powered, and `lf-thor-widowx` only accepts jobs, while someone opens the window; outside it, `execute` jobs queue. A web server to manage this is planned. Until then, by hand on the robot host:
 
 ```bash
-crontab -e
+python pico/serial_control.py on
+helm upgrade lf-thor-widowx --namespace arc-runners --set maxRunners=1 -f arc-config.yaml \
+    oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set
 
-# Start CI at 2 AM PST
-0 2 * * * cd /path/to/physical-ci && scripts/start_ci.sh >> ci.log 2>&1
-
-# Stop CI at 4 AM PST
-0 4 * * * cd /path/to/physical-ci && scripts/stop_ci.sh >> ci.log 2>&1
+# and to close the window
+helm upgrade lf-thor-widowx --namespace arc-runners --set maxRunners=0 -f arc-config.yaml \
+    oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set
+python pico/serial_control.py off
 ```
-
-The system timezone must be set to `America/Los_Angeles` (`timedatectl set-timezone America/Los_Angeles`).
 
 ## Project structure
 
