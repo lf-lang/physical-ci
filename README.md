@@ -62,9 +62,9 @@ python pico/serial_control.py on --mode normally_on  # use normally-on relay mod
 
 ### Host services
 
-`numpad_server.py` (real numpad, `127.0.0.1:5100`) and `simulation/simulation.py` (simulated arm and numpad, `127.0.0.2`) must be running for CI jobs to find them. Both run by hand, each in its own tmux session, so their logs are at hand: the key presses of the numpad server, and the collision reasons of the simulation. Neither survives a reboot; start them again before dispatching CI.
+Three processes run by hand on the robot host, each in its own tmux session so its log is at hand: `numpad_server.py` (real numpad, `127.0.0.1:5100`), `simulation/simulation.py` (simulated arm and numpad, `127.0.0.2`) and `pico/power_server.py` (arm power, `127.0.0.1:5200`, see Arm power under CI/CD). CI jobs expect all three. None survives a reboot; start them again before dispatching CI.
 
-Reading the numpad needs membership in the `input` group (`sudo usermod -aG input $USER`, then log in again). The server exits if the numpad is missing or unplugged; rerun it after plugging the numpad in.
+Reading the numpad needs membership in the `input` group, the Pico's serial port membership in `dialout` (`sudo usermod -aG input,dialout $USER`, then log in again). The numpad server exits if the numpad is missing or unplugged; rerun it after plugging the numpad in.
 
 ```bash
 pip install websockets evdev trossen_arm_sim
@@ -74,6 +74,9 @@ python numpad_server.py                              # prints each key as it is 
 
 tmux new -s sim
 python simulation/simulation.py --host 127.0.0.2     # simulated arm and numpad on the loopback alias
+
+tmux new -s power
+python pico/power_server.py                          # switches the arm off, then takes on/off requests from jobs
 ```
 
 
@@ -125,7 +128,7 @@ ROBOT_HOST=127.0.0.1 NUMPAD_SERVER_HOST=127.0.0.1 ./bin/parallel
 
 `collide.yml` — Manual-dispatch check of the collision detection itself. Builds `lfc` like `ci.yml`, then runs `src/collide.lf`, which drives the gripper into the floor, on the simulation runner; the job fails when the simulation faults the controller on the collision.
 
-`lf-pr.yml` — Reusable workflow that tests a lingua-franca pull request on this hardware. lingua-franca's `physical-ci.yml` calls it when a pull request is labeled `physical-ci`, and again on each new commit while the label is present. It runs in lingua-franca's context: `build-lfc` checks out the pull request's merge commit, builds `lfc` with `./gradlew :cli:lfc:installDist`, and uploads it as the `lfc` artifact. `simulate` and `execute` install that `lfc` into the job image and run the same steps as `ci.yml`, so results appear as checks on the pull request. Its `execute` job still runs on `lf-thor-sim` against the simulation; move it to `lf-thor-widowx` once `ci.yml` passes on the real robot.
+`lf-pr.yml` — Reusable workflow that tests a lingua-franca pull request on this hardware. lingua-franca's `physical-ci.yml` calls it when a pull request is labeled `physical-ci`, and again on each new commit while the label is present. It runs in lingua-franca's context: `build-lfc` checks out the pull request's merge commit, builds `lfc` with `./gradlew :cli:lfc:installDist`, and uploads it as the `lfc` artifact. `simulate` and `execute` install that `lfc` into the job image and run the same steps as `ci.yml`, so results appear as checks on the pull request.
 
 ### Testing lingua-franca pull requests
 
@@ -232,20 +235,13 @@ kubectl logs -f -n arc-runners <pod-name>                # follow logs
 
 
 
-### Robot window
+### Arm power
 
-`lf-thor-sim` stays available around the clock, so the `simulate` stage runs at any time. The robot is only powered, and `lf-thor-widowx` only accepts jobs, while someone opens the window; outside it, `execute` jobs queue. A web server to manage this is planned. Until then, by hand on the robot host:
+The arm is powered only while a job uses it. `pico/power_server.py` runs on the robot host, bound to `127.0.0.1:5200`, and drives the Pico relay: `POST /on` and `POST /off`, `GET /` for the state. The `execute` job switches the arm on right after the build (`pico/power_client.py on`), waits up to two minutes for the controller to boot (`pico/wait_for_arm.py`), runs the program, parks the arm and switches it off again; the last two steps run whatever happened to the program. The client reads the server's URL from `ROBOT_POWER_URL`, which only the `lf-thor-widowx` job template sets, so the same steps do nothing on the simulation runner.
 
-```bash
-python pico/serial_control.py on
-helm upgrade lf-thor-widowx --namespace arc-runners --set maxRunners=1 -f arc-config.yaml \
-    oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set
+Power-on is a lease: the server switches the arm off by itself after 8 minutes unless the job renews or ends it, so a job pod that dies without reaching its power-off step cannot leave the arm on. The server also switches the arm off when it starts and when it exits. `lf-thor-sim` needs no power and stays available around the clock, so the `simulate` stage runs at any time.
 
-# and to close the window
-helm upgrade lf-thor-widowx --namespace arc-runners --set maxRunners=0 -f arc-config.yaml \
-    oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set
-python pico/serial_control.py off
-```
+The relay can still be driven by hand with `python pico/serial_control.py on|off`; the server does not notice, so switch the arm off again afterwards. A web server to manage power and scheduling is planned; this one is its seed.
 
 ## Project structure
 
@@ -253,7 +249,7 @@ python pico/serial_control.py off
 src/             Lingua Franca source (ci.lf, parallel.lf, robot.lf)
 src-gen/         Generated C + Python code (gitignored)
 bin/             Executable wrapper scripts (gitignored)
-pico/            Pico W firmware & serial power control
+pico/            Pico W firmware, serial power control, and the arm power server and client for CI
 examples/        Calibration tools, manual test utilities, positions.json
 simulation/      Simulated arm and numpad endpoints with collision detection, for CI
 .github/         CI workflows

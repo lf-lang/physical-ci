@@ -80,7 +80,7 @@ jobs:
   execute:
     name: "Execution"
     needs: simulate
-    runs-on: lf-thor-sim
+    runs-on: lf-thor-widowx
     timeout-minutes: 5
     container:
       image: depetrol/physical-ci:latest
@@ -102,6 +102,15 @@ jobs:
         shell: bash -l {0}
         run: /opt/lfc/bin/lfc src/parallel.lf
 
+      # The arm is powered only while a job uses it, through the power server on the host. The
+      # simulation runner sets no ROBOT_POWER_URL, so there these two steps do nothing and return
+      # at once.
+      - name: Power on the arm
+        run: python3 pico/power_client.py on
+
+      - name: Wait for the arm
+        run: python3 pico/wait_for_arm.py
+
       - name: Run
         shell: bash -l {0}
         run: ./bin/parallel
@@ -115,3 +124,7 @@ jobs:
         run: |
           pkill -f src-gen/ || true
           python3 examples/home.py
+
+      - name: Power off the arm
+        if: always()
+        run: python3 pico/power_client.py off
