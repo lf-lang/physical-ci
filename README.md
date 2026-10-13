@@ -120,12 +120,11 @@ These settings make the cross-repository call possible and gate runs from pull r
 
 Every job names its image in the workflow's `container:` key. The runners use ARC's kubernetes mode: the runner pod runs only the GitHub runner, and for each job it starts a separate pod from that image. The runner's job template (`arc-job-template*.yaml`) adds host networking and the `ROBOT_HOST` and `NUMPAD_SERVER_HOST` env to that pod; it cannot change the image.
 
-To use another image, change `container.image` in the workflow. The image needs `bash`, Java 17 or newer, and the program's Python packages, plus `lfc` on its `PATH` for `ci.yml` and `collide.yml` (`lf-pr.yml` brings its own `lfc`), and the cluster must be able to pull it: push it to a registry, or on mymac load a local build into kind.
+To use another image, change `container.image` in the workflow. The image does not contain `lfc`: each workflow installs the `lfc` it tests into the job (`lf-pr.yml` downloads the one its `build-lfc` job built). The image needs what that `lfc` and the program need: `bash`, Java 17 or newer, a C toolchain with CMake and the Python headers for the Python target, and the program's Python packages. The cluster must be able to pull it: push it to a registry, or on mymac load a local build into kind. The lf-thor-widowx runner is arm64, so a pushed image must be built for both platforms.
 
 ```bash
-docker build -t depetrol/lingua-franca .
-docker push depetrol/lingua-franca
-kind load docker-image depetrol/lingua-franca --name arc   # mymac only, for an image that is not pushed
+docker buildx build --platform linux/amd64,linux/arm64 -t depetrol/physical-ci --push .
+docker build -t depetrol/physical-ci . && kind load docker-image depetrol/physical-ci --name arc   # mymac only, local build that is not pushed
 ```
 
 

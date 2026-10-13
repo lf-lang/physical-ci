@@ -11,7 +11,7 @@ jobs:
     name: "Simulation Collision Check"
     runs-on: mymac
     container:
-      image: depetrol/lingua-franca:latest
+      image: depetrol/physical-ci:latest
     steps:
       - name: Check out repository code
         uses: actions/checkout@v4
@@ -29,7 +29,7 @@ jobs:
     needs: simulate
     runs-on: mymac
     container:
-      image: depetrol/lingua-franca:latest
+      image: depetrol/physical-ci:latest
     steps:
       - name: Check out repository code
         uses: actions/checkout@v4
