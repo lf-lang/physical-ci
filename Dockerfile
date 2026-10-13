@@ -10,4 +10,4 @@ RUN apt-get update \
         python3-dev python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip3 install --no-cache-dir --break-system-packages numpy websockets "trossen_arm==1.10.*"
+RUN pip3 install --no-cache-dir --break-system-packages numpy websockets "trossen_arm==1.11.*"
